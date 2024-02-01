@@ -1,0 +1,554 @@
+#libraries
+#!/usr/bin/env Rscript
+
+library("gplots")
+args = commandArgs(trailingOnly=TRUE)
+
+# provide parameter arguments in the format: 
+# args = rrmale, rrfemale, het.recomb.suppression, newg
+# rrmale: recombination rate in males
+# rrfemale: recombination rate in females
+# het.recomb.suppression: fold strength of recombination suppression in cis(coupled) heterozygotes
+# newg: generation at which new mutation arises at locus 2
+#
+# example
+# args = 1, 10, 10, 40 (heterochiasmy with strong cis(coupled)recombination suppression)
+# args = 1, 10, 1, 40 (heterochiasmy with no cis(coupled)recombination suppression)
+# args = 5.5, 5.5, 10, 40 (no heterochiasmy with strong cis(coupled)recombination suppression)
+# args = 5.5, 5.5, 1, 40 (no heterochiasmy with no cis(coupled)recombination suppression)
+
+#Rscript heterochiasmy.script.newmutation.v2.R 1 10 10 30
+#Rscript heterochiasmy.script.newmutation.v2.R 1 10 1 30
+#Rscript heterochiasmy.script.newmutation.v2.R 5.5 5.5 10 30
+#Rscript heterochiasmy.script.newmutation.v2.R 5.5 5.5 1 30
+#Rscript heterochiasmy.script.newmutation.v2.R 10 10 1 30
+#Rscript heterochiasmy.script.newmutation.v2.R 10 10 10 30
+
+# pop gen parameters
+ne<-200 # must be even number so there are breeding pairs.
+marineNe<-1 # marine ne is 3 fold bigger than fresh
+gens<-120 # total number of generations for which simulation runs
+totrep<-2
+number.offspring<-100 # number of offspring produced per mating pair (clutch)
+m<-ne*((4*8)/ne) # migration rate out of population in both directions, must be divisible by 4 and 8
+
+# recomb params (read from commandline parameter list)
+rr.male.orig<-as.numeric(args[1])/10
+rr.female.orig<-as.numeric(args[2])/10
+het.recomb.suppression<-as.numeric(args[3])
+newg<-as.numeric(args[4]) # at 20% of total number of generations
+
+# Fitness
+# An individual's total probability of survival is the sum of the fitness of the combined cislinked alleles on c'some 1 and c'some 2
+# At the start of the simulation, secondary contact occurs between two populations fixed for opposite alleles at locus 1 and 3. 
+# The fitness effects of the cislinked alleles is contingent on locus 1 and 3 but locus 2 has no effect.
+# Then at generation newg, a new mutation arises at locus2 that is beneficial in fresh but deleterious in marine
+# the fitness effects of the cislinked alleles is now contingent on the alleles in linkage at locus 1, 2 and 3.
+
+cis.surv<-list()	# a list of survival probabilities for each of 5 populations (1-5)
+cis.surv[[1]]<-list()
+cis.surv[[2]]<-list()
+cis.surv[[3]]<-list()
+cis.surv[[4]]<-list()
+cis.surv[[5]]<-list()
+
+new.cis.surv<-list()	# a list of survival probabilities for each of 5 populations (1-5) after a new mutation has been introduced at locus 2 in generation newg
+new.cis.surv[[1]]<-list()
+new.cis.surv[[2]]<-list()
+new.cis.surv[[3]]<-list()
+new.cis.surv[[4]]<-list()
+new.cis.surv[[5]]<-list()
+
+# functions to populate survival probabilities
+myfunc<-function (myval,mypop) {
+	a1<-paste0(substring(myval,1,1),substring(myval,3,3),substring(myval,5,5));
+	a2<-paste0(substring(myval,2,2),substring(myval,4,4),substring(myval,6,6));
+	totpr<-cis.surv[[mypop]][[a1]]+cis.surv[[mypop]][[a2]];
+	return(totpr)
+}
+myfunc.newmutation<-function (myval,mypop) {
+	a1<-paste0(substring(myval,1,1),substring(myval,3,3),substring(myval,5,5));
+	a2<-paste0(substring(myval,2,2),substring(myval,4,4),substring(myval,6,6));
+	totpr<-new.cis.surv[[mypop]][[a1]]+new.cis.surv[[mypop]][[a2]];
+	return(totpr)
+}
+
+# specify survival probabilities per haploid chromosome based on alleles at three linked loci (max probability of survival per haploid chromosome is 0.5)
+# where order of alleles is locus1, locus2 locus3
+# pop 3 ("marine",  favors allele 1)
+cis.surv[[3]][["111"]]<-0.5		# individuals with alleles 1 at locus 1 and 3 have 50% chance of surviving
+cis.surv[[3]][["211"]]<-0.225	# individuals without cis(coupled linkage) ie. mismatch alleles at locus 1 and 3 have 22.5% chance of surviving
+cis.surv[[3]][["121"]]<-0.5		# individuals with alleles 1 at locus 1 and 3 have 50% chance of surviving
+cis.surv[[3]][["112"]]<-0.225
+cis.surv[[3]][["221"]]<-0.225
+cis.surv[[3]][["212"]]<-0.05	# individuals with alleles 2 at locus 1 and 3 have 0.05% chance of surviving
+cis.surv[[3]][["122"]]<-0.225
+cis.surv[[3]][["222"]]<-0.05
+# pop 1 ("freshwater",  favors allele 2)
+cis.surv[[1]][["111"]]<-0.05	
+cis.surv[[1]][["211"]]<-0.225
+cis.surv[[1]][["121"]]<-0.05	# individuals with alleles 2 at locus 1 and 3 have 0.05% chance of surviving
+cis.surv[[1]][["112"]]<-0.225
+cis.surv[[1]][["221"]]<-0.225
+cis.surv[[1]][["212"]]<-0.5		# individuals with alleles 2 at locus 1 and 3 have 50% chance of surviving
+cis.surv[[1]][["122"]]<-0.225	# individuals without cis(coupled linkage) ie. mismatch alleles at locus 1 and 3 have 22.5% chance of surviving
+cis.surv[[1]][["222"]]<-0.5		# individuals with alleles 2 at locus 1 and 3 have 50% chance of surviving
+# pop 5 ("freshwater",  favors allele 2)
+cis.surv[[5]][["111"]]<-0.05
+cis.surv[[5]][["211"]]<-0.225
+cis.surv[[5]][["121"]]<-0.05	# individuals with alleles 2 at locus 1 and 3 have 0.05% chance of surviving
+cis.surv[[5]][["112"]]<-0.225
+cis.surv[[5]][["221"]]<-0.225
+cis.surv[[5]][["212"]]<-0.5		# individuals with alleles 2 at locus 1 and 3 have 50% chance of surviving
+cis.surv[[5]][["122"]]<-0.225	# individuals without cis(coupled linkage) ie. mismatch alleles at locus 1 and 3 have 22.5% chance of surviving
+cis.surv[[5]][["222"]]<-0.5		# individuals with alleles 2 at locus 1 and 3 have 50% chance of surviving
+# pop 2 ("hybrid zone", favors cis(coupled) linkage of either allele 1na1 or 2na2)
+cis.surv[[2]][["111"]]<-0.5		# individuals with cis(coupled) alleles 1 or cis(coupled) alleles 2 at locus 1 and 3 have 50% chance of surviving
+cis.surv[[2]][["211"]]<-0.25	# individuals without cis(coupled linkage) ie. mismatch alleles at locus 1 and 3 have 25% chance of surviving
+cis.surv[[2]][["121"]]<-0.5		# individuals with cis(coupled) alleles 1 or cis(coupled) alleles 2 at locus 1 and 3 have 50% chance of surviving
+cis.surv[[2]][["112"]]<-0.25	# individuals without cis(coupled linkage) ie. mismatch alleles at locus 1 and 3 have 25% chance of surviving
+cis.surv[[2]][["221"]]<-0.25
+cis.surv[[2]][["212"]]<-0.5		# individuals with cis(coupled) alleles 1 or cis(coupled) alleles 2 at locus 1 and 3 have 50% chance of surviving
+cis.surv[[2]][["122"]]<-0.25
+cis.surv[[2]][["222"]]<-0.5		# individuals with cis(coupled) alleles 1 or cis(coupled) alleles 2 at locus 1 and 3 have 50% chance of surviving
+# pop 4 ("hybrid zone", favors cis(coupled) linkage of either allele 1na1 or 2na2)
+cis.surv[[4]][["111"]]<-0.5		# individuals with cis(coupled) alleles 1 or cis(coupled) alleles 2 at locus 1 and 3 have 50% chance of surviving
+cis.surv[[4]][["211"]]<-0.25	# individuals without cis(coupled linkage) ie. mismatch alleles at locus 1 and 3 have 25% chance of surviving
+cis.surv[[4]][["121"]]<-0.5		# individuals with cis(coupled) alleles 1 or cis(coupled) alleles 2 at locus 1 and 3 have 50% chance of surviving
+cis.surv[[4]][["112"]]<-0.25	# individuals without cis(coupled linkage) ie. mismatch alleles at locus 1 and 3 have 25% chance of surviving
+cis.surv[[4]][["221"]]<-0.25
+cis.surv[[4]][["212"]]<-0.5		# individuals with cis(coupled) alleles 1 or cis(coupled) alleles 2 at locus 1 and 3 have 50% chance of surviving
+cis.surv[[4]][["122"]]<-0.25
+cis.surv[[4]][["222"]]<-0.5		# individuals with cis(coupled) alleles 1 or cis(coupled) alleles 2 at locus 1 and 3 have 50% chance of surviving
+
+# a new mutation arises in fw pop 1, the cis fitness now takes this into account.
+# pop 3 ("marine", favors allele 1)
+new.cis.surv[[3]][["111"]]<-0.5
+new.cis.surv[[3]][["211"]]<-0.35
+new.cis.surv[[3]][["121"]]<-0.35
+new.cis.surv[[3]][["112"]]<-0.35
+new.cis.surv[[3]][["221"]]<-0.2
+new.cis.surv[[3]][["212"]]<-0.2
+new.cis.surv[[3]][["122"]]<-0.2
+new.cis.surv[[3]][["222"]]<-0.05
+# pop 1 ("freshwater", favors allele 2)
+new.cis.surv[[1]][["111"]]<-0.05
+new.cis.surv[[1]][["211"]]<-0.2
+new.cis.surv[[1]][["121"]]<-0.2
+new.cis.surv[[1]][["112"]]<-0.2
+new.cis.surv[[1]][["221"]]<-0.35
+new.cis.surv[[1]][["212"]]<-0.35
+new.cis.surv[[1]][["122"]]<-0.35
+new.cis.surv[[1]][["222"]]<-0.5
+# pop 5 ("freshwater", favors allele 2)
+new.cis.surv[[5]][["111"]]<-0.05
+new.cis.surv[[5]][["211"]]<-0.2
+new.cis.surv[[5]][["121"]]<-0.2
+new.cis.surv[[5]][["112"]]<-0.2
+new.cis.surv[[5]][["221"]]<-0.35
+new.cis.surv[[5]][["212"]]<-0.35
+new.cis.surv[[5]][["122"]]<-0.35
+new.cis.surv[[5]][["222"]]<-0.5
+# pop 2 ("hybrid zone", favors cis(coupled) linkage of either allele 111 or 222) 
+new.cis.surv[[2]][["111"]]<-0.25
+new.cis.surv[[2]][["211"]]<-0.125
+new.cis.surv[[2]][["121"]]<-0.125
+new.cis.surv[[2]][["112"]]<-0.125
+new.cis.surv[[2]][["221"]]<-0.125
+new.cis.surv[[2]][["212"]]<-0.125
+new.cis.surv[[2]][["122"]]<-0.125
+new.cis.surv[[2]][["222"]]<-0.25
+# pop 4 ("hybrid zone", favors cis(coupled) linkage of either allele 111 or 222)
+new.cis.surv[[4]][["111"]]<-0.25
+new.cis.surv[[4]][["211"]]<-0.125
+new.cis.surv[[4]][["121"]]<-0.125
+new.cis.surv[[4]][["112"]]<-0.125
+new.cis.surv[[4]][["221"]]<-0.125
+new.cis.surv[[4]][["212"]]<-0.125
+new.cis.surv[[4]][["122"]]<-0.125
+new.cis.surv[[4]][["222"]]<-0.25	
+
+pr.survival<-list()
+# first level pop 1=m, 2=h, 3=f
+for (p in 1:5) {
+  pr.survival[[p]]<-list()
+  for(i1 in 1:2) {
+    for (i2 in 1:2) {
+      for (i3 in 1:2) {
+        for (i4 in 1:2) {
+          for (i5 in 1:2) {
+            for (i6 in 1:2) {
+				# where order of alleles are: chromosome 1 locus 1, chromosome 1 locus 2, chromosome 1 locus 3, chromosome 2 locus 1, chromosome 2 locus 2, chromosome 2 locus 3
+            	pr.survival[[p]][[paste0(i1,i2,i3,i4,i5,i6,sep="")]]<-myfunc(paste0(i1,i2,i3,i4,i5,i6,sep=""),p)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+    
+# where survival rate = probability of surviving
+#------------------------------------------
+
+# create three lists (one per locus) to hold allele1 frequency data for each population for each generation
+freq.al1l1<-list()
+freq.al1l2<-list()
+freq.al1l3<-list()
+for (pops in c(1:5)) {
+  freq.al1l1[[pops]]<-list()
+  freq.al1l2[[pops]]<-list()
+  freq.al1l3[[pops]]<-list()
+  for (repr in c(1:totrep)) {
+    freq.al1l1[[pops]][[repr]]<-list()
+    freq.al1l2[[pops]][[repr]]<-list()
+    freq.al1l3[[pops]][[repr]]<-list()
+  }
+}
+
+
+for (rep in 1:totrep) {
+  
+  # INITIALISE    
+  popcsomes<-list()
+  # zero level of list is gens
+  popcsomes[[1]]<-list()
+  # first level of list is population 1f 2h 3m 4h 5f
+  popcsomes[[1]][[1]]<-list()
+  popcsomes[[1]][[2]]<-list()
+  popcsomes[[1]][[3]]<-list()
+  popcsomes[[1]][[4]]<-list()
+  popcsomes[[1]][[5]]<-list()
+  # second level of list is diploid csome copies "c1", and "c2"
+  # initially, we make locus 1 and 3 fixed for opposite alleles in pops 1 and 3
+  # but population 1 (fw1) is fixed for new mutation
+  for (p in c(1:5)) {
+    popcsomes[[1]][[p]][["c1"]]<-list()
+    popcsomes[[1]][[p]][["c2"]]<-list()
+    if(p==1) {
+      popcsomes[[1]][[p]][["c1"]]<-data.frame(R1=rep(1,ne),R2=rep(0,ne),G=rep(1,ne))
+      popcsomes[[1]][[p]][["c2"]]<-data.frame(R1=rep(1,ne),R2=rep(0,ne),G=rep(1,ne))
+    } else if (p==3) {
+      popcsomes[[1]][[p]][["c1"]]<-data.frame(R1=rep(0,ne*marineNe),R2=rep(0,ne*marineNe),G=rep(0,ne*marineNe))
+      popcsomes[[1]][[p]][["c2"]]<-data.frame(R1=rep(0,ne*marineNe),R2=rep(0,ne*marineNe),G=rep(0,ne*marineNe))
+    } else if (p==2) {
+      popcsomes[[1]][[p]][["c1"]]<-data.frame(R1=rep(c(0,0),ne/2),R2=rep(0,ne),G=rep(c(0,0),ne/2)) #  0 (fixed for 0 allele in all other pops)
+      popcsomes[[1]][[p]][["c2"]]<-data.frame(R1=rep(c(0,0),ne/2),R2=rep(0,ne),G=rep(c(0,0),ne/2))
+    } else { 
+      popcsomes[[1]][[p]][["c1"]]<-data.frame(R1=rep(0,ne),R2=rep(0,ne),G=rep(0,ne))
+      popcsomes[[1]][[p]][["c2"]]<-data.frame(R1=rep(0,ne),R2=rep(0,ne),G=rep(0,ne))
+    }
+  }
+
+  breeders<-list()
+  male.breeders<-list()
+  female.breeders<-list()
+  all.offspring<-list()
+
+  for (g in 1:gens) {
+  
+    print(paste0("generation:",g))
+    popcsomes[[g+1]]<-list()
+    breeders[[g]]<-list()
+    male.breeders[[g]]<-list()
+    female.breeders[[g]]<-list()
+    breeders[[g]][[1]]<-list()
+    breeders[[g]][[2]]<-list()
+    breeders[[g]][[3]]<-list()
+    breeders[[g]][[4]]<-list()
+    breeders[[g]][[5]]<-list()
+    female.breeders[[g]][[1]]<-list()
+    female.breeders[[g]][[2]]<-list()
+    female.breeders[[g]][[3]]<-list()
+    female.breeders[[g]][[4]]<-list()
+    female.breeders[[g]][[5]]<-list()
+    male.breeders[[g]][[1]]<-list()
+    male.breeders[[g]][[2]]<-list()
+    male.breeders[[g]][[3]]<-list()
+    male.breeders[[g]][[4]]<-list()
+    male.breeders[[g]][[5]]<-list()
+    
+    # Start each generation by removing migrants from all pops 
+    # do this by sampling m number of individuals to migrate from the population csomes list.  Females are even rows; males are odd rows, so sample accordingly.
+    # optional, build in sex biased migration. Females are 3x more likely to migrate
+    female.m.prop<-0.75
+    male.m.prop<-0.25
+    print("removing migrants...")
+    print("pop1")
+    female.migrants.out1<-sample(seq(2,length(popcsomes[[g]][[1]][["c1"]][,1]),by=2),m*female.m.prop,replace=F)
+    male.migrants.out1<-sample(seq(1,length(popcsomes[[g]][[1]][["c1"]][,1]),by=2),m*male.m.prop,replace=F)
+    print("pop2")
+    female.migrants.out2<-sample(seq(2,length(popcsomes[[g]][[2]][["c1"]][,1]),by=2),m*female.m.prop,replace=F)
+    male.migrants.out2<-sample(seq(1,length(popcsomes[[g]][[2]][["c1"]][,1]),by=2),m*male.m.prop,replace=F)
+    print("pop3")
+    female.migrants.out3<-sample(seq(2,length(popcsomes[[g]][[3]][["c1"]][,1]),by=2),m*marineNe*female.m.prop,replace=F)
+    male.migrants.out3<-sample(seq(1,length(popcsomes[[g]][[3]][["c1"]][,1]),by=2),m*marineNe*male.m.prop,replace=F)
+    print("pop4")
+    female.migrants.out4<-sample(seq(2,length(popcsomes[[g]][[4]][["c1"]][,1]),by=2),m*female.m.prop,replace=F)
+    male.migrants.out4<-sample(seq(1,length(popcsomes[[g]][[4]][["c1"]][,1]),by=2),m*male.m.prop,replace=F)
+    print("pop5")
+    female.migrants.out5<-sample(seq(2,length(popcsomes[[g]][[5]][["c1"]][,1]),by=2),m*female.m.prop,replace=F)
+    male.migrants.out5<-sample(seq(1,length(popcsomes[[g]][[5]][["c1"]][,1]),by=2),m*male.m.prop,replace=F)
+    
+    # create a list of "breeding fish" that are the popcsome individuals minus the migrants that have left the population
+    female.breeders[[g]][[1]][["c1"]]<-popcsomes[[g]][[1]][["c1"]][seq(2,length(popcsomes[[g]][[1]][["c1"]][,1]),by=2)[-match(female.migrants.out1,seq(2,length(popcsomes[[g]][[1]][["c1"]][,1]),by=2))],]
+    male.breeders[[g]][[1]][["c2"]]<-popcsomes[[g]][[1]][["c2"]][seq(1,length(popcsomes[[g]][[1]][["c2"]][,1]),by=2)[-match(male.migrants.out1,seq(1,length(popcsomes[[g]][[1]][["c2"]][,1]),by=2))],]
+    female.breeders[[g]][[2]][["c1"]]<-popcsomes[[g]][[2]][["c1"]][seq(2,length(popcsomes[[g]][[2]][["c1"]][,1]),by=2)[-match(female.migrants.out2,seq(2,length(popcsomes[[g]][[2]][["c1"]][,1]),by=2))],]
+    male.breeders[[g]][[2]][["c2"]]<-popcsomes[[g]][[2]][["c2"]][seq(1,length(popcsomes[[g]][[2]][["c2"]][,1]),by=2)[-match(male.migrants.out2,seq(1,length(popcsomes[[g]][[2]][["c2"]][,1]),by=2))],]
+    female.breeders[[g]][[3]][["c1"]]<-popcsomes[[g]][[3]][["c1"]][seq(2,length(popcsomes[[g]][[3]][["c1"]][,1]),by=2)[-match(female.migrants.out3,seq(2,length(popcsomes[[g]][[3]][["c1"]][,1]),by=2))],]
+    male.breeders[[g]][[3]][["c2"]]<-popcsomes[[g]][[3]][["c2"]][seq(1,length(popcsomes[[g]][[3]][["c2"]][,1]),by=2)[-match(male.migrants.out3,seq(1,length(popcsomes[[g]][[3]][["c2"]][,1]),by=2))],]
+    female.breeders[[g]][[4]][["c1"]]<-popcsomes[[g]][[4]][["c1"]][seq(2,length(popcsomes[[g]][[4]][["c1"]][,1]),by=2)[-match(female.migrants.out4,seq(2,length(popcsomes[[g]][[4]][["c1"]][,1]),by=2))],]
+    male.breeders[[g]][[4]][["c2"]]<-popcsomes[[g]][[4]][["c2"]][seq(1,length(popcsomes[[g]][[4]][["c2"]][,1]),by=2)[-match(male.migrants.out4,seq(1,length(popcsomes[[g]][[4]][["c2"]][,1]),by=2))],]
+    female.breeders[[g]][[5]][["c1"]]<-popcsomes[[g]][[5]][["c1"]][seq(2,length(popcsomes[[g]][[5]][["c1"]][,1]),by=2)[-match(female.migrants.out5,seq(2,length(popcsomes[[g]][[5]][["c1"]][,1]),by=2))],]
+    male.breeders[[g]][[5]][["c2"]]<-popcsomes[[g]][[5]][["c2"]][seq(1,length(popcsomes[[g]][[5]][["c2"]][,1]),by=2)[-match(male.migrants.out5,seq(1,length(popcsomes[[g]][[5]][["c2"]][,1]),by=2))],]
+    female.breeders[[g]][[1]][["c2"]]<-popcsomes[[g]][[1]][["c2"]][seq(2,length(popcsomes[[g]][[1]][["c2"]][,1]),by=2)[-match(female.migrants.out1,seq(2,length(popcsomes[[g]][[1]][["c2"]][,1]),by=2))],]
+    male.breeders[[g]][[1]][["c1"]]<-popcsomes[[g]][[1]][["c1"]][seq(1,length(popcsomes[[g]][[1]][["c1"]][,1]),by=2)[-match(male.migrants.out1,seq(1,length(popcsomes[[g]][[1]][["c1"]][,1]),by=2))],]
+    female.breeders[[g]][[2]][["c2"]]<-popcsomes[[g]][[2]][["c2"]][seq(2,length(popcsomes[[g]][[2]][["c2"]][,1]),by=2)[-match(female.migrants.out2,seq(2,length(popcsomes[[g]][[2]][["c2"]][,1]),by=2))],]
+    male.breeders[[g]][[2]][["c1"]]<-popcsomes[[g]][[2]][["c1"]][seq(1,length(popcsomes[[g]][[2]][["c1"]][,1]),by=2)[-match(male.migrants.out2,seq(1,length(popcsomes[[g]][[2]][["c1"]][,1]),by=2))],]
+    female.breeders[[g]][[3]][["c2"]]<-popcsomes[[g]][[3]][["c2"]][seq(2,length(popcsomes[[g]][[3]][["c2"]][,1]),by=2)[-match(female.migrants.out3,seq(2,length(popcsomes[[g]][[3]][["c2"]][,1]),by=2))],]
+    male.breeders[[g]][[3]][["c1"]]<-popcsomes[[g]][[3]][["c1"]][seq(1,length(popcsomes[[g]][[3]][["c1"]][,1]),by=2)[-match(male.migrants.out3,seq(1,length(popcsomes[[g]][[3]][["c1"]][,1]),by=2))],]
+    female.breeders[[g]][[4]][["c2"]]<-popcsomes[[g]][[4]][["c2"]][seq(2,length(popcsomes[[g]][[4]][["c2"]][,1]),by=2)[-match(female.migrants.out4,seq(2,length(popcsomes[[g]][[4]][["c2"]][,1]),by=2))],]
+    male.breeders[[g]][[4]][["c1"]]<-popcsomes[[g]][[4]][["c1"]][seq(1,length(popcsomes[[g]][[4]][["c1"]][,1]),by=2)[-match(male.migrants.out4,seq(1,length(popcsomes[[g]][[4]][["c1"]][,1]),by=2))],]
+    female.breeders[[g]][[5]][["c2"]]<-popcsomes[[g]][[5]][["c2"]][seq(2,length(popcsomes[[g]][[5]][["c2"]][,1]),by=2)[-match(female.migrants.out5,seq(2,length(popcsomes[[g]][[5]][["c2"]][,1]),by=2))],]
+    male.breeders[[g]][[5]][["c1"]]<-popcsomes[[g]][[5]][["c1"]][seq(1,length(popcsomes[[g]][[5]][["c1"]][,1]),by=2)[-match(male.migrants.out5,seq(1,length(popcsomes[[g]][[5]][["c1"]][,1]),by=2))],]
+    
+    # add new migrants into each pop
+    # pop2 receives migrants from pops on either side, while pop1 receives new migrants from pop2 and 2 new individuals carrying allele3, and pop3 receive migrants from pop2 only
+    print("adding migrants....")
+    #pop1 half the migrants from pop2 move into pop1
+    print("pop1")
+    female.breeders[[g]][[1]][["c1"]]<-rbind(female.breeders[[g]][[1]][["c1"]],popcsomes[[g]][[2]][["c1"]][female.migrants.out2[1:((length(female.migrants.out2)/2))],])
+    female.breeders[[g]][[1]][["c2"]]<-rbind(female.breeders[[g]][[1]][["c2"]],popcsomes[[g]][[2]][["c2"]][female.migrants.out2[1:((length(female.migrants.out2)/2))],])
+    male.breeders[[g]][[1]][["c1"]]<-rbind(male.breeders[[g]][[1]][["c1"]],popcsomes[[g]][[2]][["c1"]][male.migrants.out2[1:((length(male.migrants.out2)/2))],])
+    male.breeders[[g]][[1]][["c2"]]<-rbind(male.breeders[[g]][[1]][["c2"]],popcsomes[[g]][[2]][["c2"]][male.migrants.out2[1:((length(male.migrants.out2)/2))],])
+    #pop2 half the migrants from pop1 move into pop2, and half the migrants from pop3 move into pop2
+    print("pop2")
+    female.breeders[[g]][[2]][["c1"]]<-rbind(female.breeders[[g]][[2]][["c1"]],popcsomes[[g]][[1]][["c1"]][female.migrants.out1[1:((length(female.migrants.out1)/2))],],popcsomes[[g]][[3]][["c1"]][female.migrants.out3[1:((length(female.migrants.out3)/2))],])
+    female.breeders[[g]][[2]][["c2"]]<-rbind(female.breeders[[g]][[2]][["c2"]],popcsomes[[g]][[1]][["c2"]][female.migrants.out1[1:((length(female.migrants.out1)/2))],],popcsomes[[g]][[3]][["c2"]][female.migrants.out3[1:((length(female.migrants.out3)/2))],])
+    male.breeders[[g]][[2]][["c1"]]<-rbind(male.breeders[[g]][[2]][["c1"]],popcsomes[[g]][[1]][["c1"]][male.migrants.out1[1:((length(male.migrants.out1)/2))],],popcsomes[[g]][[3]][["c1"]][male.migrants.out3[1:((length(male.migrants.out3)/2))],])
+    male.breeders[[g]][[2]][["c2"]]<-rbind(male.breeders[[g]][[2]][["c2"]],popcsomes[[g]][[1]][["c2"]][male.migrants.out1[1:((length(male.migrants.out1)/2))],],popcsomes[[g]][[3]][["c2"]][male.migrants.out3[1:((length(male.migrants.out3)/2))],])
+    print("pop3")
+    #pop3 half the migrants from pop2 move into pop3, and half the migrants from pop4 move into pop3
+    female.breeders[[g]][[3]][["c1"]]<-rbind(female.breeders[[g]][[3]][["c1"]],popcsomes[[g]][[2]][["c1"]][female.migrants.out2[((length(female.migrants.out2)/2)+1):(length(female.migrants.out2))],],popcsomes[[g]][[4]][["c1"]][female.migrants.out4[1:((length(female.migrants.out4)/2))],])
+    female.breeders[[g]][[3]][["c2"]]<-rbind(female.breeders[[g]][[3]][["c2"]],popcsomes[[g]][[2]][["c2"]][female.migrants.out2[((length(female.migrants.out2)/2)+1):(length(female.migrants.out2))],],popcsomes[[g]][[4]][["c2"]][female.migrants.out4[1:((length(female.migrants.out4)/2))],])
+    male.breeders[[g]][[3]][["c1"]]<-rbind(male.breeders[[g]][[3]][["c1"]],popcsomes[[g]][[2]][["c1"]][male.migrants.out2[((length(male.migrants.out2)/2)+1):(length(male.migrants.out2))],],popcsomes[[g]][[4]][["c1"]][male.migrants.out4[1:((length(male.migrants.out4)/2))],])
+    male.breeders[[g]][[3]][["c2"]]<-rbind(male.breeders[[g]][[3]][["c2"]],popcsomes[[g]][[2]][["c2"]][male.migrants.out2[((length(male.migrants.out2)/2)+1):(length(male.migrants.out2))],],popcsomes[[g]][[4]][["c2"]][male.migrants.out4[1:((length(male.migrants.out4)/2))],])
+    #pop4 half the migrants from pop3 move into pop4, and half the migrants from pop5 move into pop4
+    print("pop4")
+    female.breeders[[g]][[4]][["c1"]]<-rbind(female.breeders[[g]][[4]][["c1"]],popcsomes[[g]][[3]][["c1"]][female.migrants.out3[((length(female.migrants.out3)/2)+1):(length(female.migrants.out3))],],popcsomes[[g]][[5]][["c1"]][female.migrants.out5[1:((length(female.migrants.out5)/2))],])
+    female.breeders[[g]][[4]][["c2"]]<-rbind(female.breeders[[g]][[4]][["c2"]],popcsomes[[g]][[3]][["c2"]][female.migrants.out3[((length(female.migrants.out3)/2)+1):(length(female.migrants.out3))],],popcsomes[[g]][[5]][["c2"]][female.migrants.out5[1:((length(female.migrants.out5)/2))],])
+    male.breeders[[g]][[4]][["c1"]]<-rbind(male.breeders[[g]][[4]][["c1"]],popcsomes[[g]][[3]][["c1"]][male.migrants.out3[((length(male.migrants.out3)/2)+1):(length(male.migrants.out3))],],popcsomes[[g]][[5]][["c1"]][male.migrants.out5[1:((length(male.migrants.out5)/2))],])
+    male.breeders[[g]][[4]][["c2"]]<-rbind(male.breeders[[g]][[4]][["c2"]],popcsomes[[g]][[3]][["c2"]][male.migrants.out3[((length(male.migrants.out3)/2)+1):(length(male.migrants.out3))],],popcsomes[[g]][[5]][["c2"]][male.migrants.out5[1:((length(male.migrants.out5)/2))],])
+    #pop5 half the migrants from pop4 move into pop5, 
+    print("pop5")
+    female.breeders[[g]][[5]][["c1"]]<-rbind(female.breeders[[g]][[5]][["c1"]],popcsomes[[g]][[4]][["c1"]][female.migrants.out4[((length(female.migrants.out4)/2)+1):(length(female.migrants.out4))],])
+    female.breeders[[g]][[5]][["c2"]]<-rbind(female.breeders[[g]][[5]][["c2"]],popcsomes[[g]][[4]][["c2"]][female.migrants.out4[((length(female.migrants.out4)/2)+1):(length(female.migrants.out4))],])
+    male.breeders[[g]][[5]][["c1"]]<-rbind(male.breeders[[g]][[5]][["c1"]],popcsomes[[g]][[4]][["c1"]][male.migrants.out4[((length(male.migrants.out4)/2)+1):(length(male.migrants.out4))],])
+    male.breeders[[g]][[5]][["c2"]]<-rbind(male.breeders[[g]][[5]][["c2"]],popcsomes[[g]][[4]][["c2"]][male.migrants.out4[((length(male.migrants.out4)/2)+1):(length(male.migrants.out4))],])
+
+    # join male and female breeders together into a single breeder list with females in every second row.
+    # make this list only as long as the shorter of the two sexes.
+    print("joining breeders back together")
+    for (pppp in 1:5) {
+      minnum.breeders<-min(length(female.breeders[[g]][[pppp]][["c1"]][,1]),length(male.breeders[[g]][[pppp]][["c1"]][,1]))
+      breeders[[g]][[pppp]][["c1"]]<-data.frame(matrix(NA,nrow=minnum.breeders*2,ncol=3))
+      breeders[[g]][[pppp]][["c2"]]<-data.frame(matrix(NA,nrow=minnum.breeders*2,ncol=3))
+      breeders[[g]][[pppp]][["c1"]][seq(1,length(breeders[[g]][[pppp]][["c1"]][,1]),by=2),]<-male.breeders[[g]][[pppp]][["c1"]][sample(seq(1,length(male.breeders[[g]][[pppp]][["c1"]][,1])),minnum.breeders,replace=F),]
+      breeders[[g]][[pppp]][["c1"]][seq(2,length(breeders[[g]][[pppp]][["c1"]][,1]),by=2),]<-female.breeders[[g]][[pppp]][["c1"]][sample(seq(1,length(female.breeders[[g]][[pppp]][["c1"]][,1])),minnum.breeders,replace=F),]
+      breeders[[g]][[pppp]][["c2"]][seq(1,length(breeders[[g]][[pppp]][["c2"]][,1]),by=2),]<-male.breeders[[g]][[pppp]][["c2"]][sample(seq(1,length(male.breeders[[g]][[pppp]][["c2"]][,1])),minnum.breeders,replace=F),]
+      breeders[[g]][[pppp]][["c2"]][seq(2,length(breeders[[g]][[pppp]][["c2"]][,1]),by=2),]<-female.breeders[[g]][[pppp]][["c2"]][sample(seq(1,length(female.breeders[[g]][[pppp]][["c2"]][,1])),minnum.breeders,replace=F),]
+    }
+
+  # breeding - breeding pairs are made up of males and females on every pair of rows.
+  print("breeding...")
+  all.offspring[[g]]<-list()
+  
+  # breeding in each population
+  for (p in 1:5) {
+  
+  # introduce a new mutation in firt few individuals of pop1 if g==newg.
+    if((g==newg)&(p==1)) {
+      # a new mutation in locus 2 pop 1, for first ne*0.01 number of breeding individuals.
+      for (mm in 1:round(ne*0.01,0)) {
+        breeders[[g]][[p]][["c1"]][mm,2]<-1
+        breeders[[g]][[p]][["c2"]][mm,2]<-1
+      }
+    }	 
+  
+    # since migrants were added to end of list, first shuffle breeders, before breeding.
+    #shuffle.order<-sample(seq(1,length(breeders[[g]][[p]][["c1"]][,1])),length(breeders[[g]][[p]][["c1"]][,1]),replace=F)
+    #breeders[[g]][[p]][["c1"]]<-breeders[[g]][[p]][["c1"]][shuffle.order,]
+    #breeders[[g]][[p]][["c2"]]<-breeders[[g]][[p]][["c2"]][shuffle.order,]
+
+
+    all.offspring[[g]][[p]]<-list()
+    rr.male<-rr.male.orig
+    rr.female<-rr.female.orig
+
+    # loop through breeders in this generation in steps of 2 (as breeding pairs)
+    for (i in seq(1,length(breeders[[g]][[p]][["c1"]][,1]),by=2)) {
+        # male csomes = breeders[[g]][[p]][["c1"]][i,]
+        #               breeders[[g]][[p]][["c2"]][i,]
+        # female csomes = breeders[[g]][[p]][["c1"]][i+1,]
+        #                 breeders[[g]][[p]][["c2"]][i+1,]
+        # recombination rate between L1 and L3  
+
+        # Breeding starts by making gametes
+        # A male produces number.offspring gametes with rr of them as recombinants between c1 and c2
+        # Same for females
+
+        # First list all possible gametes
+        male.gametes<-data.frame(matrix(NA,nrow=8,ncol=3))
+        male.gametes[1,]<-breeders[[g]][[p]][["c1"]][i,]
+        male.gametes[2,]<-breeders[[g]][[p]][["c2"]][i,] 
+        male.gametes[3,]<-c(breeders[[g]][[p]][["c1"]][i,1],breeders[[g]][[p]][["c1"]][i,2],breeders[[g]][[p]][["c2"]][i,3])
+        male.gametes[4,]<-c(breeders[[g]][[p]][["c1"]][i,1],breeders[[g]][[p]][["c2"]][i,2],breeders[[g]][[p]][["c1"]][i,3])
+        male.gametes[5,]<-c(breeders[[g]][[p]][["c2"]][i,1],breeders[[g]][[p]][["c1"]][i,2],breeders[[g]][[p]][["c1"]][i,3])
+        male.gametes[6,]<-c(breeders[[g]][[p]][["c1"]][i,1],breeders[[g]][[p]][["c2"]][i,2],breeders[[g]][[p]][["c2"]][i,3])
+        male.gametes[7,]<-c(breeders[[g]][[p]][["c2"]][i,1],breeders[[g]][[p]][["c1"]][i,2],breeders[[g]][[p]][["c2"]][i,3])
+        male.gametes[8,]<-c(breeders[[g]][[p]][["c2"]][i,1],breeders[[g]][[p]][["c2"]][i,2],breeders[[g]][[p]][["c1"]][i,3])
+        female.gametes<-data.frame(matrix(NA,nrow=8,ncol=3))
+        female.gametes[1,]<-breeders[[g]][[p]][["c1"]][i+1,]
+        female.gametes[2,]<-breeders[[g]][[p]][["c2"]][i+1,]
+        female.gametes[3,]<-c(breeders[[g]][[p]][["c1"]][i+1,1],breeders[[g]][[p]][["c1"]][i+1,2],breeders[[g]][[p]][["c2"]][i+1,3])
+        female.gametes[4,]<-c(breeders[[g]][[p]][["c1"]][i+1,1],breeders[[g]][[p]][["c2"]][i+1,2],breeders[[g]][[p]][["c1"]][i+1,3])
+        female.gametes[5,]<-c(breeders[[g]][[p]][["c2"]][i+1,1],breeders[[g]][[p]][["c1"]][i+1,2],breeders[[g]][[p]][["c1"]][i+1,3])
+        female.gametes[6,]<-c(breeders[[g]][[p]][["c1"]][i+1,1],breeders[[g]][[p]][["c2"]][i+1,2],breeders[[g]][[p]][["c2"]][i+1,3])
+        female.gametes[7,]<-c(breeders[[g]][[p]][["c2"]][i+1,1],breeders[[g]][[p]][["c1"]][i+1,2],breeders[[g]][[p]][["c2"]][i+1,3])
+        female.gametes[8,]<-c(breeders[[g]][[p]][["c2"]][i+1,1],breeders[[g]][[p]][["c2"]][i+1,2],breeders[[g]][[p]][["c1"]][i+1,3])
+
+        # recombination rate depends on heterozygosity of parent.
+        # recombination suppression occurs if genotypes at both loci are heterozygous and cis linked doublehets (not trans doublehets). 
+    	# (we assume that if they are trans doublehets, that homologous haplotypes overlap at some point between the two loci, a matching template strand can be found and recombination will occur at "normal" rate)
+	    if((breeders[[g]][[p]][["c1"]][i+1,1]!=breeders[[g]][[p]][["c2"]][i+1,1])&(breeders[[g]][[p]][["c1"]][i+1,1]==breeders[[g]][[p]][["c1"]][i+1,2])&(breeders[[g]][[p]][["c1"]][i+1,2]!=breeders[[g]][[p]][["c2"]][i+1,2])) {frr1<-rr.female/het.recomb.suppression} else {frr1<-rr.female}
+    	if((breeders[[g]][[p]][["c1"]][i+1,2]!=breeders[[g]][[p]][["c2"]][i+1,2])&(breeders[[g]][[p]][["c1"]][i+1,2]==breeders[[g]][[p]][["c1"]][i+1,3])&(breeders[[g]][[p]][["c1"]][i+1,3]!=breeders[[g]][[p]][["c2"]][i+1,3])) {frr2<-rr.female/het.recomb.suppression} else {frr2<-rr.female}
+	    if((breeders[[g]][[p]][["c1"]][i,1]!=breeders[[g]][[p]][["c2"]][i,1])&(breeders[[g]][[p]][["c1"]][i,1]==breeders[[g]][[p]][["c1"]][i,2])&(breeders[[g]][[p]][["c1"]][i,2]!=breeders[[g]][[p]][["c2"]][i,2])) {mrr1<-rr.male/het.recomb.suppression} else {mrr1<-rr.male}
+		if((breeders[[g]][[p]][["c1"]][i,2]!=breeders[[g]][[p]][["c2"]][i,2])&(breeders[[g]][[p]][["c1"]][i,2]==breeders[[g]][[p]][["c1"]][i,3])&(breeders[[g]][[p]][["c1"]][i,3]!=breeders[[g]][[p]][["c2"]][i,3])) {mrr2<-rr.male/het.recomb.suppression} else {mrr2<-rr.male}
+
+		# female gamete probability
+        fg1<-((1-frr1)*(1-frr2))/2
+        fg2<-((1-frr1)*(1-frr2))/2
+   		fg3<-((1-frr1)*frr2)/2
+   		fg4<-(frr1*frr2)/2
+   		fg5<-(frr1*(1-frr2))/2
+   		fg6<-(frr1*(1-frr2))/2 
+   		fg7<-(frr1*frr2)/2
+    	fg8<-((1-frr1)*frr2)/2
+        rr.female.problist<-c(fg1,fg2,fg3,fg4,fg5,fg6,fg7,fg8)
+		# male gamete probability
+        mg1<-((1-mrr1)*(1-mrr2))/2
+        mg2<-((1-mrr1)*(1-mrr2))/2
+    	mg3<-((1-mrr1)*mrr2)/2
+    	mg4<-(mrr1*mrr2)/2
+    	mg5<-(mrr1*(1-mrr2))/2
+    	mg6<-(mrr1*(1-mrr2))/2 
+    	mg7<-(mrr1*mrr2)/2
+    	mg8<-((1-mrr1)*mrr2)/2
+        rr.male.problist<-c(mg1,mg2,mg3,mg4,mg5,mg6,mg7,mg8)
+		
+		# to create the offspring, sample gametes from female gamete list with probability of rr.female.problist and from male gamete list with probability of rr.male.problist
+        # male gametes get stored in list as csome "c1", females as "c2"
+        offspring<-list()
+        offspring[["c1"]]<-male.gametes[sample(seq(1,8),number.offspring,replace=T,prob=rr.male.problist),]
+        offspring[["c2"]]<-female.gametes[sample(seq(1,8),number.offspring,replace=T,prob=rr.female.problist),]
+        
+        # now pass these offspring onto all offspring list
+        if(i==1) {
+          all.offspring[[g]][[p]][["c1"]]<-offspring[["c1"]]
+          all.offspring[[g]][[p]][["c2"]]<-offspring[["c2"]]
+        } else {
+          all.offspring[[g]][[p]][["c1"]]<-rbind(all.offspring[[g]][[p]][["c1"]],offspring[["c1"]])
+          all.offspring[[g]][[p]][["c2"]]<-rbind(all.offspring[[g]][[p]][["c2"]],offspring[["c2"]])
+        }      
+    } #end of i - looping through breeders
+    # finished breeding in this population. now apply selection.
+    # each offsprong survives with probability dependent on habitat and genotype
+    
+    if(g>=newg) {
+		# first level population (1=fw, 2=hyb, 3=mar, 4=hyb, 5=fw
+		# determine if new allele has made it into breeders of population
+	  	  numberofnewmutationspresent.c1<-length(which(breeders[[g]][[p]][["c1"]][,2]==1))
+		  numberofnewmutationspresent.c2<-length(which(breeders[[g]][[p]][["c2"]][,2]==1))
+		  if ((numberofnewmutationspresent.c1+numberofnewmutationspresent.c2)>0) {
+		  # if it has, then update pr.survival for this population:
+		  pr.survival[[p]]<-list()
+		  for(i1 in 1:2) {
+		  	for (i2 in 1:2) {
+		    	for (i3 in 1:2) {
+        			for (i4 in 1:2) {
+     	  				for (i5 in 1:2) {
+        					for (i6 in 1:2) {
+			  			  		# where order of alleles are: chromosome 1 locus 1, chromosome 1 locus 2, chromosome 1 locus 3, chromosome 2 locus 1, chromosome 2 locus 2, chromosome 2 locus 3
+     							pr.survival[[p]][[paste0(i1,i2,i3,i4,i5,i6,sep="")]]<-myfunc.newmutation(paste0(i1,i2,i3,i4,i5,i6,sep=""),p)
+   		  		        	}
+    	  		      	}
+   		  	     	}
+        		}
+    	  	 }
+  		  }
+		  } #end of if this pop has the new allele at locus 2.
+	}
+	
+    # create a list of survival probs that is all.offspring long
+    offspring.lookupkey<-as.character(paste(all.offspring[[g]][[p]][["c1"]][,1]+1,all.offspring[[g]][[p]][["c1"]][,2]+1,all.offspring[[g]][[p]][["c1"]][,3]+1,all.offspring[[g]][[p]][["c2"]][,1]+1,all.offspring[[g]][[p]][["c2"]][,2]+1,all.offspring[[g]][[p]][["c2"]][,3]+1,sep=""))
+    offspring.survival.pr<-unlist(apply(data.frame(offspring.lookupkey),MARGIN=1,FUN=function(x) {myval<-pr.survival[[p]][as.character(x)];return(myval)}))
+    
+    # now sample from a list of 0=dead, 1=survival with probabilities 1-survival.pr,survival.pr
+    survivors.tmp<-apply(data.frame(offspring.survival.pr),MARGIN=1,FUN=function(x) {myvar<-sample(c(0,1),1,replace=F,prob=c((1-x),x));return(myvar)})
+    
+    # the number of survivors might be less than ne, so only sample a number divisible by 4 that is less than or equal to ne
+    samplesize<-min(floor(length(which(survivors.tmp==1))/4)*4,ne)
+    if(p==3) {samplesize<-min(floor(length(which(survivors.tmp==1))/4)*4,ne*marineNe)}
+    print("selection acts on offsrping....")
+    survivors<-sample(which(survivors.tmp==1),samplesize,replace=F)
+    
+    #finally, create next years popcsome list of breeders using these survivors...
+    popcsomes[[g+1]][[p]]<-list()
+    popcsomes[[g+1]][[p]][["c1"]]<-list()
+    popcsomes[[g+1]][[p]][["c2"]]<-list()
+    popcsomes[[g+1]][[p]][["c1"]]<-all.offspring[[g]][[p]][["c1"]][survivors,]
+    popcsomes[[g+1]][[p]][["c2"]]<-all.offspring[[g]][[p]][["c2"]][survivors,]
+    print(paste0("pop",p,"has this many survivors:",length(all.offspring[[g]][[p]][["c1"]][survivors,1])))
+    
+    # now if gens >= newg print to screen the freq of allele 1 in each pop
+    print(paste0("..................rep",rep,"..............."))
+    freq.al1l1[[p]][[rep]][g]<-sum(length(which(popcsomes[[g]][[p]][["c1"]][,1]=="1")),length(which(popcsomes[[g]][[p]][["c2"]][,1]=="1")))/(length(popcsomes[[g]][[p]][["c2"]][,1])*2);
+    freq.al1l2[[p]][[rep]][g]<-sum(length(which(popcsomes[[g]][[p]][["c1"]][,2]=="1")),length(which(popcsomes[[g]][[p]][["c2"]][,2]=="1")))/(length(popcsomes[[g]][[p]][["c2"]][,2])*2);
+    freq.al1l3[[p]][[rep]][g]<-sum(length(which(popcsomes[[g]][[p]][["c1"]][,3]=="1")),length(which(popcsomes[[g]][[p]][["c2"]][,3]=="1")))/(length(popcsomes[[g]][[p]][["c2"]][,3])*2);
+
+  } # we've finished looping through all pops
+
+  print(paste0("rep",rep,"   ","Pop1","   ","Pop3","   ","Pop3","   ","Pop4","   ","Pop5"))
+  print(paste0("Locus1:","   ",sprintf("%.3f",freq.al1l1[[1]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l1[[2]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l1[[3]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l1[[4]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l1[[5]][[rep]][g])))    
+  print(paste0("Locus2:","   ",sprintf("%.3f",freq.al1l2[[1]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l2[[2]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l2[[3]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l2[[4]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l2[[5]][[rep]][g])))    
+  print(paste0("Locus3:","   ",sprintf("%.3f",freq.al1l3[[1]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l3[[2]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l3[[3]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l3[[4]][[rep]][g]),"   ",sprintf("%.3f",freq.al1l3[[5]][[rep]][g])))    
+
+} #we've finished looping through all the gens
+
+saveRDS(freq.al1l1,file=sprintf("freq.al1l1.rrm%s.rrf%s.hetsup%s.newg%s",args[1],args[2],args[3],args[4]))  
+saveRDS(freq.al1l2,file=sprintf("freq.al1l2.rrm%s.rrf%s.hetsup%s.newg%s",args[1],args[2],args[3],args[4]))  
+saveRDS(freq.al1l3,file=sprintf("freq.al1l3.rrm%s.rrf%s.hetsup%s.newg%s",args[1],args[2],args[3],args[4]))  
+
+pdf(file=sprintf("three.locus.5pop.newmutationgen%s.%sm.%sf.Heterochiasmy.AND.%sfold.het.recomb.femalebiasmigration.suppression.pdf",newg,rr.male.orig,rr.female.orig,het.recomb.suppression),width=10,height=14)
+# prepare empty plot frames
+layout(matrix(c(1,2,3,4,5),nrow=5,ncol=1))
+mypopcols<-c("blue","magenta","red","magenta","blue")
+  
+for (pplot in c(1:5)) {
+  plot(c(1,gens),c(0,1),type="n",xlab="gens",ylab="freq of allele1");
+  text(1,0.9,labels=sprintf("Pop%s",pplot),col=mypopcols[pplot],pos=4,cex=2)
+  lines(c(0,10),c(0.7,0.7),lty=1,col=mypopcols[pplot])
+  lines(c(0,10),c(0.6,0.6),lty=2,col=mypopcols[pplot])
+  lines(c(0,10),c(0.5,0.5),lty=3,col=mypopcols[pplot])
+  text(11,0.7,labels="Locus1",col=mypopcols[pplot],pos=4)
+  text(11,0.6,labels="Locus2",col=mypopcols[pplot],pos=4)
+  text(11,0.5,labels="Locus3",col=mypopcols[pplot],pos=4)
+  for (rr in 1:totrep) {
+    lines(c(1:g),c(unlist(freq.al1l1[[pplot]][[rr]])),lty=1,col=mypopcols[pplot])
+    lines(c(1:g),c(unlist(freq.al1l2[[pplot]][[rr]])),lty=2,col=mypopcols[pplot])
+    lines(c(1:g),c(unlist(freq.al1l3[[pplot]][[rr]])),lty=3,col=mypopcols[pplot])
+  }
+}
+dev.off()
+} #we've finished looping through all the reps
+
