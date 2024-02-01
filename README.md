@@ -24,6 +24,6 @@ Code
 
 This Github provides the code for population genetic simulations exploring the effects of recombination heterochiasmy and recombination suppression in cis(coupled) heterozygotes in the context of populations undergoing a adaptive divergence with gene flow with a selection-migration balance.  
 
-The relevant Rscript can be found here: Recombination.SelMigBalance.Rscript
+The relevant Rscript can be found here: Recombination_SelMigBalance.Rscript
 
 Further details and description are outlined in the supplementary methods of the paper.
