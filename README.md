@@ -20,11 +20,29 @@ Abstract
 Despite deep evolutionary conservation, recombination varies greatly across the genome, among individuals, sexes and populations and can be a major evolutionary force in the wild. Yet this variation in recombination and its impact on adaptively diverging populations is not well understood. To elucidate the nature and potential consequences of recombination rate variation, we characterized fine-scale recombination landscapes by combining pedigrees, functional genomics and field fitness measurements in an adaptively divergent pair of marine and freshwater threespine stickleback populations from River Tyne, Scotland. Through whole-genome sequencing of large nuclear families, we identified the genomic location of almost 50,000 crossovers and built recombination maps for 36 marine, freshwater, and hybrid individuals at 3.8 kilobase resolution. Using these maps, we quantified the factors driving variation in recombination rate: we find strong heterochiasmy between sexes (68% of the variation) but also differences among ecotypes (21.8%). Hybrids show evidence of significant recombination suppression, both in overall map length and in individual loci. We further tested and found reduced recombination rates both within single marine–freshwater adaptive loci and between loci on the same chromosome, suggestive of selection on linked ‘cassettes’. We tested theory supporting the evolution of linked selection using temporal sampling along a natural hybrid zone, and found that recombinants with shuffled alleles across loci show traits associated with reduced fitness. Our results support predictions that divergence in cis-acting recombination modifiers whose mechanisms are disrupted in hybrids, may have an important role to play in the maintenance of differences among adaptively diverging populations.
 
 
-Code
+*Code*
 
-This Github provides the code for 1) crossover detection from whole genome sequending of nuclear families and 2) population genetic simulations exploring the effects of recombination heterochiasmy and recombination suppression in cis(coupled) heterozygotes in the context of populations undergoing a adaptive divergence with gene flow with a selection-migration balance.  
+This Github provides the code for 
 
-The relevant code for crossover detection can be found in the crossover folder.
-The relevant Rscript for population genetic simulations can be found here: Recombination_SelMigBalance.Rscript
+1) crossover detection from whole genome sequending of nuclear families
+
+2) population genetic simulations exploring the effects of recombination heterochiasmy and recombination suppression in cis(coupled) heterozygotes in the context of populations undergoing a adaptive divergence with gene flow with a selection-migration balance.  
+
+*1) Crossover Detection*
+
+This script detect crossovers for each chromosome for a given parent (maternal or paternal) and outputs a bed file with chromosome, individual_id, and CO boundaries. A .txt file for each chromosome with SNP filtering information is also produced.
+
+The script requires scaffold boundary coordinates, duohmm corrected haplotype file, genotyping error file, and duohmm corrected sample file as input. 
+
+*To invoke:*
+
+Rscript crossover_detection.R \
+        ${chromosome}_scaffold_boundary_file.txt \
+        ${chromosome}.maternal.shapeit.duohmm-corrected.haps \
+        ${chromosome}.maternal.shapeit.duohmm.generr \
+        ${chromosome}.maternal.shapeit.duohmm-corrected.sample \
+        mum \
+        ${chromosome} \
+        <output_prefix>;
 
 Further details and description are outlined in the supplementary methods of the paper.
