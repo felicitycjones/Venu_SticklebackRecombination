@@ -22,8 +22,9 @@ Despite deep evolutionary conservation, recombination varies greatly across the 
 
 Code
 
-This Github provides the code for population genetic simulations exploring the effects of recombination heterochiasmy and recombination suppression in cis(coupled) heterozygotes in the context of populations undergoing a adaptive divergence with gene flow with a selection-migration balance.  
+This Github provides the code for 1) crossover detection from whole genome sequending of nuclear families and 2) population genetic simulations exploring the effects of recombination heterochiasmy and recombination suppression in cis(coupled) heterozygotes in the context of populations undergoing a adaptive divergence with gene flow with a selection-migration balance.  
 
-The relevant Rscript can be found here: Recombination_SelMigBalance.Rscript
+The relevant code for crossover detection can be found in the crossover folder.
+The relevant Rscript for population genetic simulations can be found here: Recombination_SelMigBalance.Rscript
 
 Further details and description are outlined in the supplementary methods of the paper.
